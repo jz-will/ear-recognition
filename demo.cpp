@@ -1,4 +1,12 @@
-#include <bits/stdc++.h>
+// #include <bits/stdc++.h>
+#include<iostream>	//input and output
+#include<fstream>	//op file
+#include<algorithm>	//using vetcor
+
+
+#define M_PI 3.14159265358979323846	//圆周率
+
+
 #include <opencv2/dnn.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
@@ -15,13 +23,14 @@ using namespace std;
 /*              - with or without pose variation                                           */
 /* Return: true if ear is left oriented, false otherwise                                   */
 /* --------------------------------------------------------------------------------------- */
+// true: 左耳  false: 右耳  --model-side.pb
 bool isLeft(Mat img) {
 	static bool first = true;
 	static Net net;
 
 	if(first) {
 		first = false;
-		net = readNetFromTensorflow("model-side.pb");
+		net = readNetFromTensorflow("model-side.pb");	//dnn -- read tensorflow model
 		if(net.empty()) {
 			cerr << "ERROR: Could not load the CNN for side classification" << endl;
 			exit(1);
@@ -47,7 +56,9 @@ bool isLeft(Mat img) {
 /*              SECOND locates landmarks in ears with coarse pose normalization            */
 /* Return: none                                                                            */
 /* --------------------------------------------------------------------------------------- */
-typedef enum __stage {FIRST, SECOND} stage;
+typedef enum __stage {FIRST, SECOND} stage;	// 枚举以选择stage model
+
+// read --model-stage1.pb and model-stage2.pb
 void detectLandmarks(Mat img, vector<Point2d> &ldmk, stage s) {
 	static bool first = true;
 	static Net net1, net2;
@@ -72,12 +83,13 @@ void detectLandmarks(Mat img, vector<Point2d> &ldmk, stage s) {
 		net2.setInput(inputBlob);
 		result = net2.forward("ear_ang45_3_sca20_r_tra20_r_e/out/MatMul");
 	}
-	result *= 48;
+	result *= 48;	//96*96  /255 *48
 	result += 48;
 
 	ldmk.clear();
-	for(int i=0; i < 55; i++)
+	for(int i=0; i < 55; i++)	// 55 landmarks
 		ldmk.push_back(Point2d(result.at<float>(0,i*2), result.at<float>(0,i*2+1)));
+	// float--32f--i1越界   double--result变64f
 }
 
 /* --------------------------------------------------------------------------------------- */
@@ -89,6 +101,8 @@ void detectLandmarks(Mat img, vector<Point2d> &ldmk, stage s) {
 /*              - ear height is equal to ear width                                         */
 /* Return: Mat with a 512-dimensional descriptor                                           */
 /* --------------------------------------------------------------------------------------- */
+
+// 卷积运算   -- ?model-descriptor.pb
 Mat extractDescriptor(Mat img) {
 	static bool first = true;
 	static Net net;
@@ -103,9 +117,9 @@ Mat extractDescriptor(Mat img) {
 	}
 
 	Mat inputBlob = blobFromImage(img);
-	inputBlob /= 255.0;
+	inputBlob /= 255.0;		//128*128*mode(1)  / 255(15*15)  low
 	net.setInput(inputBlob);
-	Mat result = net.forward("MatMul");
+	Mat result = net.forward("MatMul");	// ->512*1
 
 	return result.clone();
 }
@@ -161,6 +175,8 @@ void normalizeImage(Mat image, Mat &output, int size, double scaley, double scal
 /*              the interpolated image, and will be overwritten with the new values        */
 /* Return: none                                                                            */
 /* --------------------------------------------------------------------------------------- */
+
+
 void adjustParameters(vector<Point2d> ldmk, int size, double &scaley, double &scalex, double &ang, double &cx, double &cy, bool oriented, bool scaled) {
 	double ratioy = (scaley/((size-1)/2.0)), ratiox = ((scaled ? scalex : scaley)/((size-1)/2.0));
 
@@ -172,7 +188,7 @@ void adjustParameters(vector<Point2d> ldmk, int size, double &scaley, double &sc
 		data_pts.at<double>(i, 0) = xt*cos(ang)-yt*sin(ang)+cx;
 		data_pts.at<double>(i, 1) = xt*sin(ang)+yt*cos(ang)+cy;
 	}
-	PCA pca_analysis(data_pts, Mat(), CV_PCA_DATA_AS_ROW);
+	PCA pca_analysis(data_pts, Mat(), 0);	//CV_PCA_DATA_AS_ROW
 
 	/* set orientation of the ear as the direction of the first principal component */
 	double angle = atan2(pca_analysis.eigenvectors.at<double>(0, 1), pca_analysis.eigenvectors.at<double>(0, 0));
@@ -218,14 +234,13 @@ int main(int argc, char **argv) {
 	/* check if an image name was provided as argument */
 	if(argc != 2) {
 		cerr << "Usage:" << argv[0] << " filename.{png|jpg|...}" << endl;
+		cout << sizeof(double_t)<<endl;
+
+		system("pause");
 		return 1;
 	}
-
 	/* load cropped ear image */
-	Mat image = imread(argv[1], IMREAD_GRAYSCALE), interpolated;
-
-
-
+	Mat image = imread(argv[1], IMREAD_GRAYSCALE), interpolated;	//mode:1
 
 
 	/* image size for side classification and landmark detection */
@@ -236,6 +251,7 @@ int main(int argc, char **argv) {
 	double scaley = (max(image.rows, image.cols)-1.0)/2.0, scalex;
 	/* initial orientation unknown */
 	double ang = 0.0;
+
 	/* use center of the image as initial ear center */
 	double cx = (image.cols-1.0)/2.0, cy = (image.rows-1.0)/2.0;
 	/* vector for 2d coordinates of ear landmarks */
@@ -272,11 +288,9 @@ int main(int argc, char **argv) {
 
 	/* extract discriminant descriptor */
 	Mat descriptor = extractDescriptor(interpolated);
-
-
-
-
-
+	imshow("output", interpolated);
+	waitKey(0);
+	system("pause");
 	/* save normalized image and CNN descriptor */
 	imwrite("output.png", interpolated);
 	ofstream fp("output.txt", ofstream::out);
@@ -284,7 +298,5 @@ int main(int argc, char **argv) {
 		fp << descriptor.at<float>(0,i) << " ";
 	fp << endl;
 	fp.close();
-
 	return 0;
 }
-
